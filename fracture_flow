@@ -1,0 +1,215 @@
+function flow
+clc;clear
+close all
+tic
+l=1.04e-4 ;  % CT体素
+L=l*890 ;  %裂隙长度
+w=l*485;    %裂隙宽度
+yalicha=0.25e6;  % 渗透压力差
+u1=1.808e-5  % 动力粘度系数   水的是1.05e-3   空气的是1.808e-5
+rou=1000    %流体的密度   水为1000    空气为 1.29 
+jcstxs=1e-14;
+% l=l*(1+0.111);
+
+I=xlsread('C:\Users\john\Desktop\投稿三\闭合\后Y12开度蠕变.xlsx');
+a1=xlsread('E:\泥岩CT扫描\处理图像\闭合后\裂隙\Y12.xls');
+ I(I(:)>6)=6;
+% mean(I(:))*l
+[row col]=size(I)
+I2=zeros(row,col);
+for ii=1:row
+   for j=a1(ii,1)+8:a1(ii,2)-6
+       I2(ii,j)=I(ii,j);
+       end
+end  
+I=I2;
+I(I(:)<0)=0;
+% I(I(:)>6)=6;
+[row col]=size(I);
+% perm=(l*1.11)^3/12/u1*I.*I.*I;
+perm444=l^3/12/u1*I.^1.64/1.5;
+perm555=l^3/12/u1*I.^3;
+
+for i=1:row
+    for j=1:col
+perm(i,j)=min([perm444(i,j)  perm555(i,j)]);
+    end;end;
+
+
+%% 一共890*485 个节点 则有890*485*4个裂隙  对应着节点的 上 右 下 左
+perm1=zeros(row+2,col+2);
+for i=2:row+1
+    for j=2:col+1
+perm1(i,j)=perm(i-1,j-1);
+    end;end;
+perm(perm(:)< jcstxs)= jcstxs;
+ perm1(perm1(:)< jcstxs)= jcstxs;
+ 
+ %% 
+lx_n=(col*2-1)*(row-2)+col;
+liexi_num=zeros(lx_n ,6);
+d=zeros(5,2);
+kk=0;jj=0;
+    for i=2:row-1  
+        for j=1:col             
+         c11=perm1(i,j+1);   c12=perm1(i+1,j+2);  c13=perm1(i+2,j+1);  c14=perm1(i+1,j);
+         c22=perm1(i+1,j+1) ;  
+          c1=2*(c11*c22)/(c11+c22); c2=2*(c12*c22)/(c12+c22); c3=2*(c13*c22)/(c13+c22);c4=2*(c14*c22)/(c14+c22);
+          shentoulv=[c1 c2 c3 c4];
+        shentoulv(shentoulv(:)< jcstxs)= jcstxs;
+         d(1,1)=(i-2)*(col)+j+0 ;         d(1,2)= 1 ;           
+         d(2,1)=(i-1)*(col)+j+1 ;         d(2,2)=-1 ; 
+         d(3,1)=(i+0)*(col)+j+0 ;         d(3,2)= 1 ;  
+         d(4,1)=(i-1)*(col)+j-1 ;         d(4,2)=-1 ;  
+         d(5,1)=(i-1)*(col)+j+0 ;  
+         wwww=1;
+          kaishi=2;         jieshu=3;
+          if j==col;         kaishi=3;         end
+          if i==2;         kaishi=1;           end
+          if j==col&i==2;  wwww=2;             end
+          
+          for ii=kaishi:wwww:jieshu
+           kk=kk+1;
+           liexi_num(kk,:)=[kk d(5,1) d(ii,1) shentoulv(ii) d(ii,2) ii];
+            end;                end;        end;  
+      liexi_num(find(isnan(liexi_num)==1)) = 1e-15;
+   %裂隙的  编号    裂隙的两端
+%%
+clear i j jj1 kk1 d c shentoulv T1
+  u=[liexi_num(:,2);liexi_num(:,3)];
+     v=[liexi_num(:,1);liexi_num(:,1)];
+     S=[liexi_num(:,5);liexi_num(:,5)*(-1)];
+     A=sparse(u,v,S);
+size(A);
+%%
+clear u v S
+     u=liexi_num(:,1);
+     v=liexi_num(:,1);
+     S=liexi_num(:,4);
+     T=sparse(u,v,S);
+     size(T);
+%% 生成边界H3  第一类边界条件，在
+clear u v S  
+   H31(1:col, 1)=yalicha;
+   H32(1:col,1)=0;
+   Q2(1:(col*2-1)*(row-2),1)=0;
+  %%   生成A1  A3为节点和裂隙单元的衔接矩阵
+   A1=A(col+1:col*(row-1),:);
+   A21=A(1:col,:);
+   A22=A(col*(row-1)+1:col*row,:);
+   A2=[A21 ;A22];
+      
+ %% 计算H1 与 H2
+ H3=[H31;H32];
+X=A1*T*A1';Y=-A1*T*A2'*H3;
+H=X\Y;
+H1=H((row-3)*col+1:col*(row-2));
+H2= H3(col+1:col*2,1);
+H4=H1-H2;
+ for i=row-1:row-1  
+        for j=1:col             
+           c13=perm1(i+2,j+1);        c22=perm1(i+1,j+1) ;        c3=2*(c13*c22)/(c13+c22);
+        shentoulu(j,1)=c3;  
+         shentoulu(shentoulu(:)< jcstxs)= jcstxs;
+        end
+ end
+ disp(['流量为    ''  立方米/每秒 ']);
+  Q=sum(H4.*shentoulu)
+disp(['试样的渗透系数   ''    米/每秒 ']);
+K=Q/yalicha*rou*9.8*0.096/2e-3
+disp(['裂隙的水力开度   ''   米 ']);
+b=(Q*0.093*u1*12/yalicha/0.0510)^(1/3)
+%%
+
+for i=1:row-2
+  for  j=1:col
+    h(i,j)=H(j+i*col-col);
+end
+end
+h(h(:)<0)=0;
+h(h(:)>yalicha)=yalicha;
+toc
+% figure(4);mesh(h);view(0,90);colorbar;colormap(jet);pause(1);
+%%
+H=[H31;H;H32];
+for i=1:row
+  for  j=1:col
+    h(i,j)=H(j+i*col-col);
+end
+end
+
+[row ,col]=size(I);
+x=linspace(0,51,col);
+y=linspace(94,0,row);
+[X,Y]=meshgrid(x,y);
+%%
+figure(2)
+I(I(:)>6)=6;
+set(gcf, 'position', [600 250 500 600]);
+surf(X,Y,I*l*1000)
+shading interp;
+xlabel('Width (mm)');
+ylabel('Length (mm)');
+zlabel('High (mm)');
+axis equal;
+colormap(jet)
+view(0,90)
+set(gca,'ZTick',0.0:0.1:0.6);
+hw=colorbar;
+% title('试样Y12裂隙机械开度分布图');
+set(get(hw,'Title'),'string','mm');
+print(figure(2),'-djpeg','-r1200','C:\Users\john\Desktop\投稿三\闭合\机械开度')
+%%
+figure(3)
+set(gcf, 'position', [600 250 500 600]);
+surf(X,Y,h/1e3)
+shading interp;
+xlabel('Width (mm)');
+ylabel('Length (mm)');
+zlabel('High (mm)');
+axis equal;
+colormap(jet)
+view(0,90)
+set(gca,'ZTick',0.0:0.1:0.6);
+hw=colorbar;
+% title('试样Y12流体压力分布图');
+set(get(hw,'Title'),'string','kPa');
+% print(figure(3),'-djpeg','-r1200','C:\Users\john\Desktop\投稿三\闭合')
+%%
+[row ,col]=size(I);
+x=linspace(0,51,col);
+y=linspace(94,0,row-1);
+[X,Y]=meshgrid(x,y);
+I=I(1:row-1,:);
+I(I(:)<1.35e-5/1.04e-4)=1.35e-5/1.04e-4;
+hh1=h(1:row-1,:);
+hh2=h(2:row,:);
+hh=hh2-hh1;
+pe1=perm(1:row-1,:);
+pe2=perm(2:row,:);
+pe=(pe1.*pe2)./(pe1+pe2);
+v=hh.*pe*1000;
+% ./l./I/l;
+v=abs(v);
+v(v(:)<0)=1e-14;
+v(v(:)<1e-12)=1e-12;
+v=log10(v);
+% figure(5);mesh(v);view(0,90);colorbar;colormap(jet);pause(1);
+figure(4)
+set(gcf, 'position', [600 250 500 600]);
+surf(X,Y,v)
+shading interp;
+xlabel('Width (mm)');
+ylabel('Length (mm)');
+zlabel('High (mm)');
+axis equal;
+colormap(jet)
+view(0,90)
+set(gca,'ZScale','log');
+hw=colorbar;
+% title('试样Y12裂隙流量分布图');
+set(get(hw,'Title'),'string','log10（） L/s');
+print(figure(4),'-djpeg','-r1200','C:\Users\john\Desktop\投稿三\闭合\流量分布')
+% load handel;sound(y,Fs)%  哈咪路亚
+close all
+end
