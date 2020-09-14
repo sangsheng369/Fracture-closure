@@ -97,14 +97,6 @@ while ( abs(s9-s)>5e-6|| biaozhun>1e-4 )  & u<51
 %  tabulate(A(:))
  
  
- 
- 
-
- 
- 
- 
- 
- 
 stress1= A\s0;
 %%
 % stress1(stress1(:)>0.1/suoxiao^2)=0.1/suoxiao^2;
